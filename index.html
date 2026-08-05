@@ -1,0 +1,92 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Neon Runner</title>
+    <meta name="description" content="An endless runner game built for Android MVP.">
+    
+    <!-- PWA Manifest -->
+    <link rel="manifest" href="manifest.json">
+    
+    <!-- Fonts -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@400;600;800&display=swap" rel="stylesheet">
+    
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <!-- Landscape Prompt for Mobile -->
+    <div id="landscape-prompt">
+        <svg style="width: 100px; height: 100px; margin-bottom: 20px;" fill="none" stroke="#38bdf8" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 8V4m0 0h4M4 4l5 5m11-1V4m0 0h-4m4 0l-5 5M4 16v4m0 0h4m-4 0l5-5m11 5l-5-5m5 5v-4m0 4h-4"></path></svg>
+        Please Rotate Your Device
+    </div>
+    
+    <div id="game-container">
+        <!-- The Game Canvas -->
+        <canvas id="gameCanvas"></canvas>
+        
+        <!-- UI Overlay -->
+        <div id="ui-layer">
+            <!-- Competitive Dashboard -->
+            <div id="dashboard">
+                <div id="rank-display" class="rank-bronze">Bronze Runner</div>
+                <div class="score-row">
+                    <div id="score-display">Score: <span id="score-value">0</span></div>
+                    <div id="multiplier-display">x1</div>
+                </div>
+                <div id="dash-cooldown-container">
+                    <div id="dash-cooldown-bar"></div>
+                </div>
+            </div>
+            
+            <!-- Mobile Controls -->
+            <button id="mobile-dash-btn" class="mobile-btn">DASH</button>
+            
+            <!-- Start Screen -->
+            <div id="start-screen" class="menu-card active">
+                <div class="logo-container">
+                    <h1 class="animated-logo">Neon Runner</h1>
+                    <div class="logo-underline"></div>
+                </div>
+                
+                <div class="controls-guide">
+                    <div class="control-item">
+                        <kbd>SPACE</kbd> or <kbd>↑</kbd> <span class="control-desc">Jump / Double Jump</span>
+                    </div>
+                    <div class="control-item">
+                        <kbd>SHIFT</kbd> <span class="control-desc">Shield Dash (Smash obstacles)</span>
+                    </div>
+                </div>
+                
+                <button id="start-btn" class="primary-btn pulse-btn">Start Game</button>
+            </div>
+            
+            <!-- Game Over Screen -->
+            <div id="game-over-screen" class="menu-card">
+                <h2>Game Over</h2>
+                <div class="score-summary">
+                    <p>Score: <span id="final-score">0</span></p>
+                    <p>High Score: <span id="high-score">0</span></p>
+                </div>
+                <button id="restart-btn" class="primary-btn">Play Again</button>
+            </div>
+        </div>
+    </div>
+
+    <script src="game.js"></script>
+    <script>
+        // Basic Service Worker Registration for PWA installability
+        if ('serviceWorker' in navigator) {
+            window.addEventListener('load', () => {
+                navigator.serviceWorker.register('/sw.js').then(registration => {
+                    console.log('SW registered: ', registration);
+                }).catch(registrationError => {
+                    console.log('SW registration failed: ', registrationError);
+                });
+            });
+        }
+    </script>
+</body>
+</html>
