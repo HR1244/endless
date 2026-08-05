@@ -76,15 +76,7 @@ body, html {
 
 #dash-cooldown-bar.cooldown { background: #ef4444; box-shadow: 0 0 15px #ef4444; }
 
-/* Mobile Controls */
-.mobile-btn {
-    display: none; position: absolute; bottom: 40px; right: 40px;
-    background: rgba(16, 185, 129, 0.1); border: 2px solid #10b981; color: #10b981;
-    padding: 20px 40px; font-size: 1.5rem; font-weight: 900; border-radius: 50px;
-    pointer-events: auto; text-shadow: 0 0 10px #10b981;
-    box-shadow: 0 0 20px rgba(16, 185, 129, 0.4), inset 0 0 10px rgba(16, 185, 129, 0.4);
-}
-.mobile-btn:active { background: rgba(16, 185, 129, 0.4); }
+/* Mobile Controls Removed (Swipe implemented) */
 
 /* Premium Glassmorphism Menus */
 .menu-card {
@@ -175,8 +167,4 @@ h2 {
 @media (orientation: portrait) and (max-width: 768px) {
     #landscape-prompt { display: flex; }
     #ui-layer, #gameCanvas { display: none; }
-}
-
-@media (max-width: 1024px) {
-    .mobile-btn { display: block; }
 }

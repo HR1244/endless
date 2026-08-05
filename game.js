@@ -11,7 +11,6 @@ const restartBtn = document.getElementById('restart-btn');
 const rankDisplay = document.getElementById('rank-display');
 const multiplierDisplay = document.getElementById('multiplier-display');
 const dashCooldownBar = document.getElementById('dash-cooldown-bar');
-const mobileDashBtn = document.getElementById('mobile-dash-btn');
 
 let gameState = 'START';
 let animationId;
@@ -34,7 +33,6 @@ let globalHue = 200;
 let cameraZoom = 1;
 let cameraAngle = 0;
 
-// Resize canvas
 function resizeCanvas() {
     canvas.width = window.innerWidth;
     canvas.height = window.innerHeight;
@@ -42,7 +40,6 @@ function resizeCanvas() {
 window.addEventListener('resize', resizeCanvas);
 resizeCanvas();
 
-// Audio Synthesizer
 const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
 let beatTimer = 0;
 let beatInterval = 30;
@@ -119,21 +116,27 @@ function playSound(type) {
         osc.frequency.exponentialRampToValueAtTime(800, audioCtx.currentTime + 0.05);
         gainNode.gain.setValueAtTime(0.1, audioCtx.currentTime);
         gainNode.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + 0.05);
+    } else if (type === 'life') {
+        osc.type = 'sine';
+        osc.frequency.setValueAtTime(800, audioCtx.currentTime);
+        osc.frequency.setValueAtTime(1200, audioCtx.currentTime + 0.15);
+        osc.frequency.setValueAtTime(1600, audioCtx.currentTime + 0.3);
+        gainNode.gain.setValueAtTime(0.3, audioCtx.currentTime);
+        gainNode.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + 0.6);
     }
     osc.start();
-    osc.stop(audioCtx.currentTime + 0.5);
+    osc.stop(audioCtx.currentTime + 0.6);
 }
 
-// Game Objects
 const player = {
     x: window.innerWidth * 0.15, y: 0, width: 40, height: 40,
     dy: 0, jumpForce: -14, maxJumps: 2, jumpCount: 0,
-    shieldActive: false, shieldTimer: 0
+    shieldActive: false, shieldTimer: 0,
+    lives: 3, iframes: 0
 };
 
 const boss = {
-    active: false,
-    hp: 0, maxHp: 15,
+    active: false, hp: 0, maxHp: 15,
     x: 0, y: 0, width: 100, height: 100,
     floatOffset: 0, attackTimer: 0, hitTimer: 0, warningTimer: 0
 };
@@ -151,7 +154,6 @@ const projectiles = [];
 const particles = [];
 const backgroundStars = [];
 
-// Init stars
 for(let i=0; i<80; i++) {
     backgroundStars.push({
         x: Math.random() * canvas.width, y: Math.random() * canvas.height,
@@ -209,8 +211,8 @@ function spawnBoss() {
     boss.hp = boss.maxHp;
     boss.x = canvas.width + 200;
     boss.y = 50;
-    boss.warningTimer = 180; // Show warning for 3 seconds
-    playSound('death'); // ominous sound
+    boss.warningTimer = 180; 
+    playSound('death'); 
     screenShake = 20;
 }
 
@@ -219,6 +221,7 @@ function resetGame() {
     floorY = canvas.height - floorHeight;
     player.y = floorY - player.height;
     player.dy = 0; player.jumpCount = 0; player.shieldActive = false; player.shieldTimer = 0;
+    player.lives = 3; player.iframes = 0;
     obstacles.length = 0; collectibles.length = 0; powerups.length = 0; projectiles.length = 0; particles.length = 0;
     score = 0; coins = 0; multiplier = 1; distance = 0; dashCooldown = 0; isDashing = false;
     globalHue = 200; cameraZoom = 1;
@@ -239,8 +242,7 @@ function spawnEntities() {
     let roll = Math.random();
     
     if (roll > 0.4) {
-        let isTurret = distance > 2000 && Math.random() > 0.7 && !boss.active; // No turrets during boss
-        
+        let isTurret = distance > 2000 && Math.random() > 0.7 && !boss.active;
         if (isTurret) {
             obstacles.push({
                 type: 'turret', x: canvas.width + 50, y: floorY - 60, width: 40, height: 60,
@@ -257,12 +259,10 @@ function spawnEntities() {
     } else if (roll > 0.1) {
         let pattern = Math.floor(Math.random() * 3);
         let startY = floorY - 50 - (Math.random() * 100);
-        
         for(let i=0; i < (pattern === 0 ? 1 : 3); i++) {
             let coinColor = '#fbbf24'; let coinValue = 5;
             if (distance > 3000 && Math.random() > 0.7) { coinColor = '#a855f7'; coinValue = 15; }
             if (distance > 8000 && Math.random() > 0.85) { coinColor = '#ef4444'; coinValue = 50; }
-
             collectibles.push({
                 x: canvas.width + 50 + (i * 45), y: startY + (pattern === 2 ? (i*25) : 0),
                 width: 20, height: 20, color: coinColor, value: coinValue,
@@ -270,8 +270,12 @@ function spawnEntities() {
             });
         }
     } else {
-        let powerupType = Math.random() > 0.5 ? 'shield' : 'dash_refresh';
-        let pColor = powerupType === 'shield' ? '#06b6d4' : '#10b981';
+        let typeRoll = Math.random();
+        let powerupType = 'shield';
+        let pColor = '#06b6d4'; // Cyan
+        if (typeRoll > 0.8) { powerupType = 'life'; pColor = '#f43f5e'; } // Rare Pink Heart
+        else if (typeRoll > 0.4) { powerupType = 'dash_refresh'; pColor = '#10b981'; } // Green
+        
         powerups.push({
             type: powerupType, x: canvas.width + 50, y: floorY - 100 - (Math.random() * 50),
             width: 30, height: 30, color: pColor, collected: false, floatOffset: Math.random() * Math.PI * 2
@@ -287,10 +291,9 @@ function jump() {
         player.dy = player.jumpForce;
         player.jumpCount++;
         playSound('jump');
-        
         cameraAngle = -0.02;
-        if (player.jumpCount > 1) { spawnParticles(player.x + player.width/2, player.y + player.height, '#ffffff', 15, 'trail'); } 
-        else { spawnParticles(player.x + player.width/2, player.y + player.height, `hsl(${globalHue}, 100%, 60%)`, 8); }
+        if (player.jumpCount > 1) spawnParticles(player.x + player.width/2, player.y + player.height, '#ffffff', 15, 'trail');
+        else spawnParticles(player.x + player.width/2, player.y + player.height, `hsl(${globalHue}, 100%, 60%)`, 8);
     }
 }
 
@@ -303,31 +306,43 @@ function dash() {
     }
 }
 
+function takeDamage() {
+    if (player.shieldActive) {
+        breakShield();
+        return false; // Survived via shield
+    }
+    if (player.iframes > 0) return false; // Survived via invincibility
+    
+    player.lives--;
+    playSound('hit');
+    screenShake = 25;
+    spawnParticles(player.x + player.width/2, player.y + player.height/2, '#f43f5e', 30, 'smash');
+    
+    if (player.lives <= 0) {
+        gameOver();
+        return true; // Died
+    }
+    
+    player.iframes = 60; // 1 second invulnerability
+    return false; // Survived by losing a life
+}
+
 function handleTap(x, y, isJump) {
     if (gameState !== 'PLAYING') return;
     
-    // Check Boss Click
     if (boss.active && boss.hp > 0 && boss.warningTimer <= 0) {
-        // Boss Hitbox (Generous)
         if (x > boss.x - 40 && x < boss.x + boss.width + 40 &&
             y > boss.y - 40 && y < boss.y + boss.height + 40) {
             
-            boss.hp--;
-            boss.hitTimer = 5;
-            spawnParticles(x, y, '#ffffff', 5);
-            playSound('hit');
+            boss.hp--; boss.hitTimer = 5;
+            spawnParticles(x, y, '#ffffff', 5); playSound('hit');
             
             if (boss.hp <= 0) {
-                // Kill Boss
-                boss.active = false;
-                bossSpawnTarget += 10000; 
-                bossKillCount++;
-                addScore(5000);
-                screenShake = 50;
-                playSound('death'); 
+                boss.active = false; bossSpawnTarget += 10000; bossKillCount++;
+                addScore(5000); screenShake = 50; playSound('death'); 
                 spawnParticles(boss.x + boss.width/2, boss.y + boss.height/2, '#a855f7', 150, 'smash');
             }
-            return; // Successful tap on boss, do not trigger jump
+            return;
         }
     }
     
@@ -338,22 +353,40 @@ window.addEventListener('keydown', (e) => {
     if (e.code === 'Space' || e.code === 'ArrowUp') jump();
     if (e.code === 'ShiftLeft' || e.code === 'ShiftRight') dash();
 });
+
+let touchStartX = 0;
+let touchStartY = 0;
+
 window.addEventListener('touchstart', (e) => {
-    if (e.target.id === 'mobile-dash-btn') return;
     if (e.target.tagName !== 'BUTTON') { 
         e.preventDefault(); 
+        touchStartX = e.changedTouches[0].clientX;
+        touchStartY = e.changedTouches[0].clientY;
         for(let i=0; i<e.touches.length; i++) {
             handleTap(e.touches[i].clientX, e.touches[i].clientY, true);
         }
     }
 }, { passive: false });
+
+window.addEventListener('touchend', (e) => {
+    if (e.target.tagName !== 'BUTTON') { 
+        let touchEndX = e.changedTouches[0].clientX;
+        let touchEndY = e.changedTouches[0].clientY;
+        let dx = touchEndX - touchStartX;
+        let dy = touchEndY - touchStartY;
+        
+        // Swipe Right to Dash
+        if (dx > 40 && Math.abs(dx) > Math.abs(dy)) {
+            dash();
+        }
+    }
+});
+
 window.addEventListener('mousedown', (e) => {
-    if (e.target.tagName !== 'BUTTON' && e.target.id !== 'mobile-dash-btn') {
+    if (e.target.tagName !== 'BUTTON') {
         handleTap(e.clientX, e.clientY, true);
     }
 });
-mobileDashBtn.addEventListener('click', dash);
-mobileDashBtn.addEventListener('touchstart', (e) => { e.preventDefault(); dash(); });
 
 function breakShield() {
     player.shieldActive = false; player.shieldTimer = 0; playSound('smash'); screenShake = 15;
@@ -374,36 +407,26 @@ function update() {
     }
 
     distance += gameSpeed;
+    if (player.iframes > 0) player.iframes--;
     
-    // Boss Spawning
-    if (distance > bossSpawnTarget && !boss.active) {
-        spawnBoss();
-    }
+    if (distance > bossSpawnTarget && !boss.active) spawnBoss();
 
-    // Boss Logic
     if (boss.active) {
         if (boss.warningTimer > 0) boss.warningTimer--;
-        
-        // Hover and approach
         boss.y = 50 + Math.sin(boss.floatOffset) * 20;
         boss.floatOffset += 0.05;
         let targetX = canvas.width - 200;
-        boss.x += (targetX - boss.x) * 0.05; // Spring towards right side
-        
+        boss.x += (targetX - boss.x) * 0.05;
         if (boss.hitTimer > 0) boss.hitTimer--;
         
-        // Attack
         if (boss.warningTimer <= 0) {
             boss.attackTimer++;
-            if (boss.attackTimer > (Math.random() * 60 + 60)) { // Fire every 1-2 seconds
-                boss.attackTimer = 0;
-                playSound('laser');
-                // Target player
+            if (boss.attackTimer > (Math.random() * 60 + 60)) {
+                boss.attackTimer = 0; playSound('laser');
                 let dx = (player.x + player.width/2) - (boss.x + boss.width/2);
                 let dy = (player.y + player.height/2) - (boss.y + boss.height/2);
                 let mag = Math.sqrt(dx*dx + dy*dy);
-                let speed = 12 + (baseSpeed * 0.5); // Scales with game speed
-                
+                let speed = 12 + (baseSpeed * 0.5);
                 projectiles.push({
                     x: boss.x + boss.width/2, y: boss.y + boss.height/2,
                     width: 20, height: 20, color: '#a855f7',
@@ -420,14 +443,9 @@ function update() {
 
     globalHue = (200 + (distance * 0.01)) % 360; 
 
-    // Beat logic
     beatTimer++;
     beatInterval = Math.max(15, 40 - (gameSpeed)); 
-    if (beatTimer > beatInterval) {
-        playBeat();
-        beatTimer = 0;
-        cameraZoom = isDashing ? 1.05 : 1.02; 
-    }
+    if (beatTimer > beatInterval) { playBeat(); beatTimer = 0; cameraZoom = isDashing ? 1.05 : 1.02; }
 
     if (cameraZoom > 1) cameraZoom -= 0.01;
     if (cameraAngle < 0) cameraAngle += 0.002;
@@ -440,8 +458,7 @@ function update() {
     }
 
     if (isDashing) {
-        dashTimer--;
-        spawnParticles(player.x, player.y + Math.random()*player.height, '#10b981', 3, 'trail');
+        dashTimer--; spawnParticles(player.x, player.y + Math.random()*player.height, '#10b981', 3, 'trail');
         globalHue = (globalHue + 50) % 360; 
         if (dashTimer <= 0) { isDashing = false; gameSpeed = baseSpeed; }
     }
@@ -469,8 +486,7 @@ function update() {
 
     obstacleTimer++;
     if (obstacleTimer > nextSpawn) {
-        spawnEntities();
-        obstacleTimer = 0;
+        spawnEntities(); obstacleTimer = 0;
         nextSpawn = Math.max(40, Math.random() * 50 + 60 - (gameSpeed * 1.5));
     }
 
@@ -483,9 +499,15 @@ function update() {
         let p = powerups[i]; p.x -= gameSpeed; p.floatOffset += 0.1;
         if (player.x < p.x + p.width && player.x + player.width > p.x &&
             player.y < p.y + p.height && player.y + player.height > p.y) {
-            playSound('powerup'); spawnParticles(p.x + p.width/2, p.y + p.height/2, p.color, 30); addScore(100);
-            if (p.type === 'shield') { player.shieldActive = true; player.shieldTimer = 300; } 
-            else if (p.type === 'dash_refresh') { dashCooldown = 0; }
+            playSound(p.type === 'life' ? 'life' : 'powerup'); 
+            spawnParticles(p.x + p.width/2, p.y + p.height/2, p.color, 30); 
+            
+            if (p.type === 'shield') { player.shieldActive = true; player.shieldTimer = 300; addScore(100); } 
+            else if (p.type === 'dash_refresh') { dashCooldown = 0; addScore(100); }
+            else if (p.type === 'life') {
+                if (player.lives < 3) { player.lives++; }
+                else { addScore(500); }
+            }
             powerups.splice(i, 1); i--; continue;
         }
         if (p.x + p.width < 0) { powerups.splice(i, 1); i--; }
@@ -509,20 +531,19 @@ function update() {
 
     for (let i = 0; i < projectiles.length; i++) {
         let proj = projectiles[i];
-        // Move according to velocities if set, else horizontal
-        proj.x += proj.vx || -(gameSpeed * 2.5);
-        proj.y += proj.vy || 0;
+        proj.x += proj.vx || -(gameSpeed * 2.5); proj.y += proj.vy || 0;
         
         if (player.x + 10 < proj.x + proj.width && player.x + player.width - 10 > proj.x &&
             player.y + 10 < proj.y + proj.height && player.y + player.height - 10 > proj.y) {
             if (isDashing) {
                 playSound('smash'); spawnParticles(proj.x, proj.y, proj.color, 20, 'smash');
                 projectiles.splice(i, 1); i--; addScore(50); continue;
-            } else if (player.shieldActive) {
-                breakShield(); projectiles.splice(i, 1); i--; continue;
-            } else { gameOver(); return; }
+            } else {
+                if (takeDamage()) return; // Player died
+                // If survived (shield or iframes), destroy projectile
+                projectiles.splice(i, 1); i--; continue;
+            }
         }
-        // Remove if out of bounds
         if (proj.x + proj.width < 0 || proj.y > canvas.height || proj.x > canvas.width + 100) { projectiles.splice(i, 1); i--; }
     }
 
@@ -538,8 +559,10 @@ function update() {
                 if (isDashing) {
                     playSound('smash'); screenShake = 15; spawnParticles(o.x, o.y, '#ef4444', 40, 'smash');
                     obstacles.splice(i, 1); i--; addScore(50); continue;
-                } else if (player.shieldActive) { breakShield(); obstacles.splice(i, 1); i--; continue; } 
-                else { gameOver(); return; }
+                } else {
+                    if (takeDamage()) return; 
+                    obstacles.splice(i, 1); i--; continue; 
+                }
             }
             if (!o.passed && o.x + o.width < player.x) { o.passed = true; addScore(15); }
         } else {
@@ -550,12 +573,13 @@ function update() {
                 if (isDashing) {
                     playSound('smash'); screenShake = 15; spawnParticles(o.x, o.y, '#ef4444', 40, 'smash');
                     obstacles.splice(i, 1); i--; addScore(25); continue;
-                } else if (player.shieldActive) { breakShield(); obstacles.splice(i, 1); i--; continue; } 
-                else { gameOver(); return; }
+                } else {
+                    if (takeDamage()) return;
+                    obstacles.splice(i, 1); i--; continue;
+                }
             }
             if (!o.passed && o.x + o.radius < player.x) { o.passed = true; addScore(10); }
         }
-
         if (o.type === 'turret') { if (o.x + o.width < 0) { obstacles.splice(i, 1); i--; } } 
         else { if (o.x + o.radius < 0) { obstacles.splice(i, 1); i--; } }
     }
@@ -608,7 +632,6 @@ function draw() {
         }
     }
 
-    // Boss Rendering
     if (boss.active) {
         if (boss.warningTimer > 0) {
             ctx.fillStyle = '#ef4444'; ctx.font = '900 60px Outfit'; ctx.textAlign = 'center';
@@ -617,27 +640,22 @@ function draw() {
             ctx.fillText("WARNING: BOSS APPROACHING", canvas.width/2, canvas.height/3);
             ctx.globalAlpha = 1; ctx.textAlign = 'left';
         } else {
-            // Draw Boss Body
             ctx.fillStyle = boss.hitTimer > 0 ? '#ffffff' : '#a855f7';
             ctx.shadowBlur = 40; ctx.shadowColor = '#a855f7';
             ctx.fillRect(boss.x, boss.y, boss.width, boss.height);
-            
-            // Draw Boss Eye (Glowing)
             ctx.fillStyle = '#ef4444'; ctx.shadowColor = '#ef4444';
             ctx.beginPath(); ctx.arc(boss.x + boss.width/2, boss.y + boss.height/2, 20 + Math.sin(Date.now()/100)*5, 0, Math.PI*2); ctx.fill();
-            
-            // Draw Health Bar
-            ctx.shadowBlur = 0;
-            ctx.fillStyle = 'rgba(255,255,255,0.2)';
+            ctx.shadowBlur = 0; ctx.fillStyle = 'rgba(255,255,255,0.2)';
             ctx.fillRect(boss.x, boss.y - 30, boss.width, 10);
-            ctx.fillStyle = '#ef4444';
-            ctx.fillRect(boss.x, boss.y - 30, boss.width * (boss.hp / boss.maxHp), 10);
-            
-            // Draw HP Text
+            ctx.fillStyle = '#ef4444'; ctx.fillRect(boss.x, boss.y - 30, boss.width * (boss.hp / boss.maxHp), 10);
             ctx.fillStyle = '#ffffff'; ctx.font = '800 16px Outfit'; ctx.textAlign = 'center';
-            ctx.fillText(`${boss.hp} HP`, boss.x + boss.width/2, boss.y - 40);
-            ctx.textAlign = 'left';
+            ctx.fillText(`${boss.hp} HP`, boss.x + boss.width/2, boss.y - 40); ctx.textAlign = 'left';
         }
+    }
+
+    // Player blinking for iframes
+    if (player.iframes > 0) {
+        ctx.globalAlpha = Math.sin(Date.now() / 40) > 0 ? 1 : 0.3;
     }
 
     ctx.fillStyle = primaryColor;
@@ -657,13 +675,26 @@ function draw() {
         ctx.fillStyle = '#ffffff'; ctx.shadowBlur = 10; ctx.shadowColor = '#ffffff';
         ctx.beginPath(); ctx.arc(player.x + player.width/2, player.y - 12, 4, 0, Math.PI*2); ctx.fill();
     }
+    ctx.globalAlpha = 1; // reset alpha
 
     powerups.forEach(p => {
         ctx.fillStyle = p.color; ctx.shadowBlur = 20; ctx.shadowColor = p.color;
         let floatY = p.y + Math.sin(p.floatOffset) * 8;
-        ctx.beginPath(); ctx.arc(p.x + p.width/2, floatY + p.height/2, p.width/2, 0, Math.PI*2); ctx.fill();
-        ctx.fillStyle = '#fff'; ctx.font = '900 16px Outfit'; ctx.textAlign = 'center';
-        ctx.fillText(p.type === 'shield' ? 'S' : 'D', p.x + p.width/2, floatY + p.height/2 + 6); ctx.textAlign = 'left';
+        
+        if (p.type === 'life') {
+            // Draw a cute heart polygon for life
+            ctx.beginPath();
+            ctx.moveTo(p.x + p.width/2, floatY + p.height/4);
+            ctx.bezierCurveTo(p.x + p.width/2, floatY, p.x, floatY, p.x, floatY + p.height/2);
+            ctx.bezierCurveTo(p.x, floatY + p.height*0.8, p.x + p.width/2, floatY + p.height, p.x + p.width/2, floatY + p.height);
+            ctx.bezierCurveTo(p.x + p.width/2, floatY + p.height, p.x + p.width, floatY + p.height*0.8, p.x + p.width, floatY + p.height/2);
+            ctx.bezierCurveTo(p.x + p.width, floatY, p.x + p.width/2, floatY, p.x + p.width/2, floatY + p.height/4);
+            ctx.fill();
+        } else {
+            ctx.beginPath(); ctx.arc(p.x + p.width/2, floatY + p.height/2, p.width/2, 0, Math.PI*2); ctx.fill();
+            ctx.fillStyle = '#fff'; ctx.font = '900 16px Outfit'; ctx.textAlign = 'center';
+            ctx.fillText(p.type === 'shield' ? 'S' : 'D', p.x + p.width/2, floatY + p.height/2 + 6); ctx.textAlign = 'left';
+        }
     });
 
     collectibles.forEach(c => {
@@ -675,13 +706,10 @@ function draw() {
 
     projectiles.forEach(proj => {
         ctx.fillStyle = proj.color; ctx.shadowBlur = 30; ctx.shadowColor = proj.color;
-        
         if (proj.vx) {
-            // Targeted Laser (Circle)
             ctx.beginPath(); ctx.arc(proj.x, proj.y, proj.width/2, 0, Math.PI*2); ctx.fill();
             ctx.fillStyle = '#fff'; ctx.beginPath(); ctx.arc(proj.x, proj.y, proj.width/4, 0, Math.PI*2); ctx.fill();
         } else {
-            // Normal Horizontal Laser
             ctx.fillRect(proj.x, proj.y, proj.width, proj.height);
             ctx.fillStyle = '#fff'; ctx.fillRect(proj.x + 10, proj.y + 2, proj.width - 20, proj.height - 4);
         }
@@ -709,6 +737,17 @@ function draw() {
     
     ctx.shadowBlur = 0;
     particles.forEach(p => p.draw());
+    
+    // Draw Lives UI (Top Left)
+    if (gameState === 'PLAYING') {
+        for (let i = 0; i < 3; i++) {
+            ctx.fillStyle = i < player.lives ? '#f43f5e' : 'rgba(255,255,255,0.2)';
+            ctx.shadowBlur = i < player.lives ? 15 : 0;
+            ctx.shadowColor = '#f43f5e';
+            ctx.fillRect(30 + (i * 35), 30, 20, 20);
+        }
+        ctx.shadowBlur = 0;
+    }
 
     ctx.restore(); 
 }
