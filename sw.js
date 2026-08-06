@@ -1,4 +1,4 @@
-const CACHE_NAME = 'neon-runner-v2';
+const CACHE_NAME = 'neon-runner-v3';
 const urlsToCache = [
   './index.html',
   './style.css',
@@ -8,6 +8,7 @@ const urlsToCache = [
 ];
 
 self.addEventListener('install', event => {
+  self.skipWaiting(); // Force update immediately
   event.waitUntil(
     caches.open(CACHE_NAME)
       .then(cache => {
@@ -25,7 +26,7 @@ self.addEventListener('activate', event => {
             return caches.delete(cacheName);
           }
         })
-      );
+      ).then(() => self.clients.claim()); // Take control of pages immediately
     })
   );
 });
