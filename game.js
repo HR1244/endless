@@ -176,7 +176,6 @@ class Particle {
     }
     draw() {
         ctx.save(); ctx.globalAlpha = Math.max(0, this.alpha); ctx.fillStyle = this.color;
-        ctx.shadowColor = this.color; ctx.shadowBlur = 15;
         ctx.fillRect(this.x, this.y, this.size, this.size); ctx.restore();
     }
 }
@@ -340,7 +339,7 @@ function handleTap(x, y, isJump) {
             if (boss.hp <= 0) {
                 boss.active = false; bossSpawnTarget += 10000; bossKillCount++;
                 addScore(5000); screenShake = 50; playSound('death'); 
-                spawnParticles(boss.x + boss.width/2, boss.y + boss.height/2, '#a855f7', 150, 'smash');
+                spawnParticles(boss.x + boss.width/2, boss.y + boss.height/2, '#a855f7', 80, 'smash');
             }
             return;
         }
