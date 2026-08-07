@@ -1,6 +1,15 @@
 const canvas = document.getElementById('gameCanvas');
 const ctx = canvas.getContext('2d');
 
+const IS_MOBILE = window.innerWidth <= 768;
+if (IS_MOBILE) {
+    const originalShadowBlur = Object.getOwnPropertyDescriptor(CanvasRenderingContext2D.prototype, 'shadowBlur');
+    Object.defineProperty(CanvasRenderingContext2D.prototype, 'shadowBlur', {
+        set(val) { originalShadowBlur.set.call(this, 0); },
+        get() { return originalShadowBlur.get.call(this); }
+    });
+}
+
 const scoreValue = document.getElementById('score-value');
 const startScreen = document.getElementById('start-screen');
 const gameOverScreen = document.getElementById('game-over-screen');
