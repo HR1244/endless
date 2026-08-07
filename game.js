@@ -250,7 +250,8 @@ function spawnEntities() {
     let roll = Math.random();
     
     if (roll > 0.4) {
-        let isTurret = distance > 2000 && Math.random() > 0.7 && !boss.active;
+        if (boss.active) return; // Pure 1v1 duel during Boss phase
+        let isTurret = distance > 2000 && Math.random() > 0.7;
         if (isTurret) {
             obstacles.push({
                 type: 'turret', x: canvas.width + 50, y: floorY - 60, width: 40, height: 60,
@@ -429,7 +430,8 @@ function update() {
         
         if (boss.warningTimer <= 0) {
             boss.attackTimer++;
-            if (boss.attackTimer > (Math.random() * 60 + 60)) {
+            let attackDelay = Math.max(15, 60 - (bossKillCount * 10)); // Gets faster every encounter
+            if (boss.attackTimer > (Math.random() * attackDelay + attackDelay)) {
                 boss.attackTimer = 0; playSound('laser');
                 let dx = (player.x + player.width/2) - (boss.x + boss.width/2);
                 let dy = (player.y + player.height/2) - (boss.y + boss.height/2);
