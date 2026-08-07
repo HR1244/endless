@@ -60,8 +60,8 @@
                         <kbd>SHIFT</kbd> <span class="control-desc">Shield Dash (Smash obstacles)</span>
                     </div>
                 </div>
-                
                 <button id="start-btn" class="primary-btn pulse-btn">Start Game</button>
+                <button id="install-btn" class="secondary-btn" style="display: none; margin-top: 15px;">Add to Home Screen</button>
             </div>
             
             <!-- Game Over Screen -->
@@ -81,8 +81,9 @@
         // Basic Service Worker Registration for PWA installability
         if ('serviceWorker' in navigator) {
             window.addEventListener('load', () => {
-                navigator.serviceWorker.register('/sw.js').then(registration => {
+                navigator.serviceWorker.register('/sw.js', { updateViaCache: 'none' }).then(registration => {
                     console.log('SW registered: ', registration);
+                    registration.update(); // Force check for updates
                 }).catch(registrationError => {
                     console.log('SW registration failed: ', registrationError);
                 });
@@ -96,6 +97,35 @@
                     }
                 });
             });
+        }
+
+        // PWA Install Prompt Logic
+        let deferredPrompt;
+        const installBtn = document.getElementById('install-btn');
+        
+        window.addEventListener('beforeinstallprompt', (e) => {
+            e.preventDefault();
+            deferredPrompt = e;
+            installBtn.style.display = 'inline-block';
+        });
+        
+        installBtn.addEventListener('click', async () => {
+            if (deferredPrompt) {
+                deferredPrompt.prompt();
+                const { outcome } = await deferredPrompt.userChoice;
+                if (outcome === 'accepted') {
+                    installBtn.style.display = 'none';
+                }
+                deferredPrompt = null;
+            }
+        });
+        
+        window.addEventListener('appinstalled', () => {
+            installBtn.style.display = 'none';
+        });
+        
+        if (window.matchMedia('(display-mode: standalone)').matches || window.navigator.standalone === true) {
+            installBtn.style.display = 'none';
         }
     </script>
 </body>
