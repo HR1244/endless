@@ -873,9 +873,11 @@ function onFaceResults(results) {
 }
 
 // Hand Tracking Logic
-let isFistClosed = false;
-let lastFistTime = 0;
-let handHistory = []; 
+let leftFistClosed = false;
+let rightFistClosed = false;
+let lastLeftFistTime = 0;
+let lastRightFistTime = 0;
+let leftHandHistory = []; 
 
 function getHandOpenness(landmarks) {
     const wrist = landmarks[0];
@@ -901,47 +903,76 @@ function onHandResults(results) {
     drawPip(results, true);
     
     if (results.multiHandLandmarks && results.multiHandLandmarks.length > 0) {
-        const landmarks = results.multiHandLandmarks[0];
         const now = Date.now();
-        
-        // --- Fist Clench to Jump ---
-        const openness = getHandOpenness(landmarks);
-        
-        // Map 1-10 slider to 1.1 - 1.8 threshold
-        // High sens (10) -> jumps easily, threshold higher (e.g. 1.8)
-        // Low sens (1) -> requires tight fist, threshold lower (e.g. 1.1)
         const sens = parseInt(camSensitivity.value);
         const fistThreshold = 1.0 + (sens * 0.08); 
+        const swipeThreshold = 0.15 - (sens * 0.01);
         
-        if (openness < fistThreshold) { 
-            if (!isFistClosed) {
-                isFistClosed = true;
-                if (now - lastFistTime > 200) { 
-                    lastFistTime = now;
-                    if (gameState === 'PLAYING') handleTap(0, 0, true);
-                }
-            }
-        } else {
-            isFistClosed = false;
-        }
-        
-        // --- Swipe Horizontal to Dash ---
-        const wrist = landmarks[0];
-        handHistory.push({x: wrist.x, y: wrist.y, time: now});
-        if (handHistory.length > 5) handHistory.shift();
-        
-        if (handHistory.length === 5) {
-            const first = handHistory[0];
-            const last = handHistory[4];
-            const dt = last.time - first.time;
+        for (let i = 0; i < results.multiHandLandmarks.length; i++) {
+            const landmarks = results.multiHandLandmarks[i];
+            const wrist = landmarks[0];
+            const openness = getHandOpenness(landmarks);
+            const isFist = openness < fistThreshold;
             
-            if (dt < 200) {
-                const dx = last.x - first.x;
-                const swipeThreshold = 0.15 - (sens * 0.01);
+            // Since camera is mirrored, x > 0.5 is the physical Left hand of the user
+            const isPhysicalLeftHand = wrist.x > 0.5;
+            
+            if (isPhysicalLeftHand) {
+                // Movement Logic (Jump / Dash)
+                let isDashingMove = false;
                 
-                if (Math.abs(dx) > swipeThreshold) { // Horizontal Swipe
-                    if (gameState === 'PLAYING' && !isDashing && dashCooldown === 0) dash();
-                    handHistory = []; 
+                leftHandHistory.push({x: wrist.x, y: wrist.y, time: now});
+                if (leftHandHistory.length > 5) leftHandHistory.shift();
+                
+                if (isFist && leftHandHistory.length === 5) {
+                    const first = leftHandHistory[0];
+                    const last = leftHandHistory[4];
+                    const dt = last.time - first.time;
+                    
+                    if (dt < 200) {
+                        const dx = last.x - first.x;
+                        // Swipe physical right means dx < 0 on mirrored cam
+                        if (dx < -swipeThreshold) { 
+                            if (gameState === 'PLAYING' && !isDashing && dashCooldown === 0) {
+                                dash();
+                                isDashingMove = true;
+                            }
+                            leftHandHistory = []; 
+                        }
+                    }
+                }
+                
+                if (isFist) { 
+                    if (!leftFistClosed && !isDashingMove) {
+                        leftFistClosed = true;
+                        if (now - lastLeftFistTime > 200) { 
+                            lastLeftFistTime = now;
+                            if (gameState === 'PLAYING') handleTap(0, 0, true);
+                        }
+                    }
+                } else {
+                    leftFistClosed = false;
+                }
+                
+            } else {
+                // Combat Logic (Right Hand attacks boss)
+                if (isFist) { 
+                    if (!rightFistClosed) {
+                        rightFistClosed = true;
+                        if (now - lastRightFistTime > 200) { 
+                            lastRightFistTime = now;
+                            if (gameState === 'PLAYING' && boss.active) {
+                                boss.hp--;
+                                // Visual & Audio Feedback
+                                try { hitSound.currentTime = 0; hitSound.play(); } catch(e){}
+                                for(let p=0; p<15; p++) {
+                                    particles.push(new Particle(boss.x, boss.y, boss.color));
+                                }
+                            }
+                        }
+                    }
+                } else {
+                    rightFistClosed = false;
                 }
             }
         }
@@ -965,7 +996,7 @@ async function startWebcam(mode) {
         }
         if (mode === 'hands' && !handsModel) {
             handsModel = new Hands({locateFile: (file) => `https://cdn.jsdelivr.net/npm/@mediapipe/hands/${file}`});
-            handsModel.setOptions({maxNumHands: 1, modelComplexity: 1, minDetectionConfidence: 0.5, minTrackingConfidence: 0.5});
+            handsModel.setOptions({maxNumHands: 2, modelComplexity: 1, minDetectionConfidence: 0.5, minTrackingConfidence: 0.5});
             handsModel.onResults(onHandResults);
         }
         
@@ -978,7 +1009,7 @@ async function startWebcam(mode) {
         });
         
         await camera.start();
-        camStatus.innerText = mode === 'face' ? "Camera Active! Blink to Jump." : "Camera Active! Clench to Jump, Swipe to Dash.";
+        camStatus.innerText = mode === 'face' ? "Camera Active! Blink to Jump." : "Camera Active! Left Hand = Move, Right Hand = Combat.";
         camStatus.style.color = "#10b981";
     } catch (err) {
         camStatus.innerText = "Camera Error: " + err.message;
