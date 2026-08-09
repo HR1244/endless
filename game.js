@@ -801,11 +801,36 @@ restartBtn.addEventListener('click', startGame);
 const webcamMode = document.getElementById('webcam-mode');
 const camStatus = document.getElementById('cam-status');
 const videoElement = document.getElementById('webcam-video');
+const pipCanvas = document.getElementById('pip-canvas');
+const pipCtx = pipCanvas.getContext('2d');
+const camSensitivity = document.getElementById('cam-sensitivity');
+const sensitivityContainer = document.getElementById('sensitivity-container');
 
 let faceMesh = null;
 let handsModel = null;
 let camera = null;
 let currentMode = 'off';
+
+function drawPip(results, isHands) {
+    if (!results.image) return;
+    pipCanvas.width = results.image.width;
+    pipCanvas.height = results.image.height;
+    pipCtx.save();
+    pipCtx.clearRect(0, 0, pipCanvas.width, pipCanvas.height);
+    pipCtx.drawImage(results.image, 0, 0, pipCanvas.width, pipCanvas.height);
+    
+    if (isHands && results.multiHandLandmarks) {
+        for (const landmarks of results.multiHandLandmarks) {
+            drawConnectors(pipCtx, landmarks, HAND_CONNECTIONS, {color: '#10b981', lineWidth: 3});
+            drawLandmarks(pipCtx, landmarks, {color: '#a855f7', lineWidth: 1, radius: 3});
+        }
+    } else if (!isHands && results.multiFaceLandmarks) {
+        for (const landmarks of results.multiFaceLandmarks) {
+            drawLandmarks(pipCtx, landmarks, {color: '#38bdf8', lineWidth: 0, radius: 1});
+        }
+    }
+    pipCtx.restore();
+}
 
 // Face Tracking Logic
 let isBlinking = false;
@@ -820,12 +845,19 @@ function calculateEAR(eye) {
 
 function onFaceResults(results) {
     if (currentMode !== 'face') return;
+    drawPip(results, false);
+    
     if (results.multiFaceLandmarks && results.multiFaceLandmarks.length > 0) {
         const landmarks = results.multiFaceLandmarks[0];
         const leftEye = [landmarks[33], landmarks[160], landmarks[158], landmarks[133], landmarks[153], landmarks[144]];
         const rightEye = [landmarks[362], landmarks[385], landmarks[387], landmarks[263], landmarks[373], landmarks[380]];
         const ear = (calculateEAR(leftEye) + calculateEAR(rightEye)) / 2;
-        if (ear < 0.22) { 
+        
+        // Map 1-10 slider to 0.15 - 0.28 threshold
+        const sens = parseInt(camSensitivity.value);
+        const threshold = 0.15 + (sens * 0.013);
+        
+        if (ear < threshold) { 
             if (!isBlinking) {
                 isBlinking = true;
                 let now = Date.now();
@@ -841,31 +873,42 @@ function onFaceResults(results) {
 }
 
 // Hand Tracking Logic
-let handX = 0;
-let handY = 0;
-let lastHandTime = 0;
+let handHistory = [];
 
 function onHandResults(results) {
     if (currentMode !== 'hands') return;
+    drawPip(results, true);
+    
     if (results.multiHandLandmarks && results.multiHandLandmarks.length > 0) {
         const wrist = results.multiHandLandmarks[0][0]; // Wrist landmark
         const now = Date.now();
-        const dt = now - lastHandTime;
         
-        if (lastHandTime > 0 && dt < 150) {
-            const dx = wrist.x - handX;
-            const dy = wrist.y - handY;
+        handHistory.push({x: wrist.x, y: wrist.y, time: now});
+        if (handHistory.length > 5) handHistory.shift();
+        
+        if (handHistory.length === 5) {
+            const first = handHistory[0];
+            const last = handHistory[4];
+            const dt = last.time - first.time;
             
-            if (dy < -0.06) { // Swipe UP (Y decreases)
-                if (gameState === 'PLAYING') handleTap(0, 0, true);
-                lastHandTime = 0; return; // Debounce
-            }
-            if (Math.abs(dx) > 0.08) { // Swipe Horizontal
-                if (gameState === 'PLAYING' && !isDashing && dashCooldown === 0) dash();
-                lastHandTime = 0; return; // Debounce
+            if (dt < 200) {
+                const dx = last.x - first.x;
+                const dy = last.y - first.y;
+                
+                // Map 1-10 slider to 0.15 - 0.02 threshold
+                const sens = parseInt(camSensitivity.value);
+                const threshold = 0.15 - (sens * 0.013);
+                
+                if (dy < -threshold) { // Swipe UP
+                    if (gameState === 'PLAYING') handleTap(0, 0, true);
+                    handHistory = []; return; 
+                }
+                if (Math.abs(dx) > threshold + 0.02) { // Swipe Horizontal
+                    if (gameState === 'PLAYING' && !isDashing && dashCooldown === 0) dash();
+                    handHistory = []; return; 
+                }
             }
         }
-        handX = wrist.x; handY = wrist.y; lastHandTime = now;
     }
 }
 
@@ -875,6 +918,8 @@ async function startWebcam(mode) {
     camStatus.style.display = 'block';
     camStatus.innerText = "Downloading AI Model... (Takes a moment)";
     camStatus.style.color = "#a855f7";
+    sensitivityContainer.style.display = 'flex';
+    pipCanvas.style.display = 'block';
     
     try {
         if (mode === 'face' && !faceMesh) {
@@ -910,6 +955,8 @@ function stopWebcam() {
     if (camera) { camera.stop(); camera = null; }
     currentMode = 'off';
     camStatus.style.display = 'none';
+    sensitivityContainer.style.display = 'none';
+    pipCanvas.style.display = 'none';
 }
 
 webcamMode.addEventListener('change', (e) => {

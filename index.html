@@ -18,6 +18,7 @@
     <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js" crossorigin="anonymous"></script>
     <script src="https://cdn.jsdelivr.net/npm/@mediapipe/face_mesh/face_mesh.js" crossorigin="anonymous"></script>
     <script src="https://cdn.jsdelivr.net/npm/@mediapipe/hands/hands.js" crossorigin="anonymous"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/drawing_utils/drawing_utils.js" crossorigin="anonymous"></script>
     
     <!-- Fix missing favicon 404 -->
     <link rel="icon" href="data:;base64,iVBORw0KGgo=">
@@ -34,6 +35,9 @@
     <div id="game-container">
         <!-- The Game Canvas -->
         <canvas id="gameCanvas"></canvas>
+        
+        <!-- Picture-in-Picture Camera Feedback -->
+        <canvas id="pip-canvas"></canvas>
         
         <!-- UI Overlay -->
         <div id="ui-layer">
@@ -66,13 +70,19 @@
                     </div>
                     
                     <div class="experimental-settings" style="margin-top: 10px; padding-top: 15px; border-top: 1px solid rgba(255,255,255,0.1); display: flex; flex-direction: column; align-items: center; gap: 10px;">
-                        <div style="display: flex; align-items: center; gap: 15px;">
-                            <span class="control-desc" style="color: #a855f7; font-weight: 800;">Webcam Mode:</span>
-                            <select id="webcam-mode" class="neon-select">
-                                <option value="off">Disabled</option>
-                                <option value="face">Face (Blink = Jump)</option>
-                                <option value="hands">Hands (Swipe = Jump/Dash)</option>
-                            </select>
+                        <div style="display: flex; flex-direction: column; align-items: center; gap: 10px;">
+                            <div style="display: flex; align-items: center; gap: 15px;">
+                                <span class="control-desc" style="color: #a855f7; font-weight: 800;">Webcam Mode:</span>
+                                <select id="webcam-mode" class="neon-select">
+                                    <option value="off">Disabled</option>
+                                    <option value="face">Face (Blink = Jump)</option>
+                                    <option value="hands">Hands (Swipe = Jump/Dash)</option>
+                                </select>
+                            </div>
+                            <div id="sensitivity-container" style="display: none; align-items: center; gap: 10px;">
+                                <span class="control-desc" style="font-size: 0.9rem;">Sensitivity:</span>
+                                <input type="range" id="cam-sensitivity" min="1" max="10" value="5" class="neon-slider">
+                            </div>
                         </div>
                         <div id="cam-status" style="display: none; color: #38bdf8; font-size: 0.9rem; font-weight: 600;">Initializing Camera...</div>
                         <video id="webcam-video" style="display: none;" autoplay playsinline></video>
