@@ -796,3 +796,107 @@ function gameOver() {
 
 startBtn.addEventListener('click', startGame);
 restartBtn.addEventListener('click', startGame);
+
+// --- Webcam Blink Control Logic ---
+const blinkToggle = document.getElementById('blink-toggle');
+const camStatus = document.getElementById('cam-status');
+const videoElement = document.getElementById('webcam-video');
+
+let faceMesh = null;
+let camera = null;
+let isBlinking = false;
+let lastBlinkTime = 0;
+let blinkCount = 0;
+let blinkResetTimer = null;
+
+function calculateEAR(eye) {
+    const v1 = Math.hypot(eye[1].x - eye[5].x, eye[1].y - eye[5].y);
+    const v2 = Math.hypot(eye[2].x - eye[4].x, eye[2].y - eye[4].y);
+    const h = Math.hypot(eye[0].x - eye[3].x, eye[0].y - eye[3].y);
+    return (v1 + v2) / (2.0 * h);
+}
+
+function onFaceResults(results) {
+    if (results.multiFaceLandmarks && results.multiFaceLandmarks.length > 0) {
+        const landmarks = results.multiFaceLandmarks[0];
+        const leftEye = [landmarks[33], landmarks[160], landmarks[158], landmarks[133], landmarks[153], landmarks[144]];
+        const rightEye = [landmarks[362], landmarks[385], landmarks[387], landmarks[263], landmarks[373], landmarks[380]];
+        
+        const leftEAR = calculateEAR(leftEye);
+        const rightEAR = calculateEAR(rightEye);
+        const ear = (leftEAR + rightEAR) / 2;
+        
+        if (ear < 0.22) { // Blink detected threshold
+            if (!isBlinking) {
+                isBlinking = true;
+                let now = Date.now();
+                if (now - lastBlinkTime > 200) { // Debounce blinks
+                    lastBlinkTime = now;
+                    blinkCount++;
+                    
+                    if (gameState === 'PLAYING') {
+                        // Always try to jump on blink
+                        handleTap(0, 0, true);
+                    }
+                    
+                    clearTimeout(blinkResetTimer);
+                    blinkResetTimer = setTimeout(() => {
+                        blinkCount = 0;
+                    }, 500);
+                }
+            }
+        } else {
+            isBlinking = false;
+        }
+    }
+}
+
+async function startWebcam() {
+    camStatus.style.display = 'block';
+    camStatus.innerText = "Downloading AI Model... (Takes a moment)";
+    camStatus.style.color = "#a855f7";
+    
+    try {
+        if (!faceMesh) {
+            faceMesh = new FaceMesh({locateFile: (file) => {
+                return `https://cdn.jsdelivr.net/npm/@mediapipe/face_mesh/${file}`;
+            }});
+            faceMesh.setOptions({
+                maxNumFaces: 1,
+                refineLandmarks: true,
+                minDetectionConfidence: 0.5,
+                minTrackingConfidence: 0.5
+            });
+            faceMesh.onResults(onFaceResults);
+        }
+        
+        camera = new Camera(videoElement, {
+            onFrame: async () => {
+                await faceMesh.send({image: videoElement});
+            },
+            width: 320,
+            height: 240
+        });
+        
+        await camera.start();
+        camStatus.innerText = "Camera Active! Blink to Jump.";
+        camStatus.style.color = "#10b981";
+    } catch (err) {
+        camStatus.innerText = "Camera Error: " + err.message;
+        camStatus.style.color = "#ef4444";
+        blinkToggle.checked = false;
+    }
+}
+
+function stopWebcam() {
+    if (camera) { camera.stop(); }
+    camStatus.style.display = 'none';
+}
+
+blinkToggle.addEventListener('change', (e) => {
+    if (e.target.checked) {
+        startWebcam();
+    } else {
+        stopWebcam();
+    }
+});
