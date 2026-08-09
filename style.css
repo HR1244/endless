@@ -169,13 +169,19 @@ h2 {
     100% { box-shadow: 0 0 0 0 rgba(56, 189, 248, 0); }
 }
 
-/* Toggle Switch */
-.switch { position: relative; display: inline-block; width: 50px; height: 24px; }
-.switch input { opacity: 0; width: 0; height: 0; }
-.slider { position: absolute; cursor: pointer; top: 0; left: 0; right: 0; bottom: 0; background-color: rgba(255,255,255,0.1); transition: .4s; border-radius: 24px; border: 1px solid rgba(255,255,255,0.2); }
-.slider:before { position: absolute; content: ""; height: 16px; width: 16px; left: 3px; bottom: 3px; background-color: #94a3b8; transition: .4s; border-radius: 50%; }
-input:checked + .slider { background-color: rgba(168, 85, 247, 0.4); border-color: #a855f7; box-shadow: 0 0 10px rgba(168, 85, 247, 0.5); }
-input:checked + .slider:before { transform: translateX(26px); background-color: #a855f7; }
+/* Neon Dropdown */
+.neon-select {
+    background: rgba(10, 15, 30, 0.8); color: #38bdf8;
+    border: 1px solid #38bdf8; border-radius: 8px;
+    padding: 8px 15px; font-family: 'Outfit', sans-serif;
+    font-size: 1rem; font-weight: 600; cursor: pointer;
+    outline: none; transition: all 0.3s;
+    box-shadow: 0 0 10px rgba(56, 189, 248, 0.2);
+}
+.neon-select:focus, .neon-select:hover {
+    box-shadow: 0 0 20px rgba(56, 189, 248, 0.5);
+    background: rgba(56, 189, 248, 0.1);
+}
 
 /* Force Landscape overlay for Portrait mobile */
 #landscape-prompt {

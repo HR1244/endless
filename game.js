@@ -797,17 +797,19 @@ function gameOver() {
 startBtn.addEventListener('click', startGame);
 restartBtn.addEventListener('click', startGame);
 
-// --- Webcam Blink Control Logic ---
-const blinkToggle = document.getElementById('blink-toggle');
+// --- Webcam AI Controllers ---
+const webcamMode = document.getElementById('webcam-mode');
 const camStatus = document.getElementById('cam-status');
 const videoElement = document.getElementById('webcam-video');
 
 let faceMesh = null;
+let handsModel = null;
 let camera = null;
+let currentMode = 'off';
+
+// Face Tracking Logic
 let isBlinking = false;
 let lastBlinkTime = 0;
-let blinkCount = 0;
-let blinkResetTimer = null;
 
 function calculateEAR(eye) {
     const v1 = Math.hypot(eye[1].x - eye[5].x, eye[1].y - eye[5].y);
@@ -817,32 +819,19 @@ function calculateEAR(eye) {
 }
 
 function onFaceResults(results) {
+    if (currentMode !== 'face') return;
     if (results.multiFaceLandmarks && results.multiFaceLandmarks.length > 0) {
         const landmarks = results.multiFaceLandmarks[0];
         const leftEye = [landmarks[33], landmarks[160], landmarks[158], landmarks[133], landmarks[153], landmarks[144]];
         const rightEye = [landmarks[362], landmarks[385], landmarks[387], landmarks[263], landmarks[373], landmarks[380]];
-        
-        const leftEAR = calculateEAR(leftEye);
-        const rightEAR = calculateEAR(rightEye);
-        const ear = (leftEAR + rightEAR) / 2;
-        
-        if (ear < 0.22) { // Blink detected threshold
+        const ear = (calculateEAR(leftEye) + calculateEAR(rightEye)) / 2;
+        if (ear < 0.22) { 
             if (!isBlinking) {
                 isBlinking = true;
                 let now = Date.now();
-                if (now - lastBlinkTime > 200) { // Debounce blinks
+                if (now - lastBlinkTime > 200) { 
                     lastBlinkTime = now;
-                    blinkCount++;
-                    
-                    if (gameState === 'PLAYING') {
-                        // Always try to jump on blink
-                        handleTap(0, 0, true);
-                    }
-                    
-                    clearTimeout(blinkResetTimer);
-                    blinkResetTimer = setTimeout(() => {
-                        blinkCount = 0;
-                    }, 500);
+                    if (gameState === 'PLAYING') handleTap(0, 0, true);
                 }
             }
         } else {
@@ -851,52 +840,82 @@ function onFaceResults(results) {
     }
 }
 
-async function startWebcam() {
+// Hand Tracking Logic
+let handX = 0;
+let handY = 0;
+let lastHandTime = 0;
+
+function onHandResults(results) {
+    if (currentMode !== 'hands') return;
+    if (results.multiHandLandmarks && results.multiHandLandmarks.length > 0) {
+        const wrist = results.multiHandLandmarks[0][0]; // Wrist landmark
+        const now = Date.now();
+        const dt = now - lastHandTime;
+        
+        if (lastHandTime > 0 && dt < 150) {
+            const dx = wrist.x - handX;
+            const dy = wrist.y - handY;
+            
+            if (dy < -0.06) { // Swipe UP (Y decreases)
+                if (gameState === 'PLAYING') handleTap(0, 0, true);
+                lastHandTime = 0; return; // Debounce
+            }
+            if (Math.abs(dx) > 0.08) { // Swipe Horizontal
+                if (gameState === 'PLAYING' && !isDashing && dashCooldown === 0) dash();
+                lastHandTime = 0; return; // Debounce
+            }
+        }
+        handX = wrist.x; handY = wrist.y; lastHandTime = now;
+    }
+}
+
+async function startWebcam(mode) {
+    if (camera) stopWebcam();
+    currentMode = mode;
     camStatus.style.display = 'block';
     camStatus.innerText = "Downloading AI Model... (Takes a moment)";
     camStatus.style.color = "#a855f7";
     
     try {
-        if (!faceMesh) {
-            faceMesh = new FaceMesh({locateFile: (file) => {
-                return `https://cdn.jsdelivr.net/npm/@mediapipe/face_mesh/${file}`;
-            }});
-            faceMesh.setOptions({
-                maxNumFaces: 1,
-                refineLandmarks: true,
-                minDetectionConfidence: 0.5,
-                minTrackingConfidence: 0.5
-            });
+        if (mode === 'face' && !faceMesh) {
+            faceMesh = new FaceMesh({locateFile: (file) => `https://cdn.jsdelivr.net/npm/@mediapipe/face_mesh/${file}`});
+            faceMesh.setOptions({maxNumFaces: 1, refineLandmarks: true, minDetectionConfidence: 0.5, minTrackingConfidence: 0.5});
             faceMesh.onResults(onFaceResults);
+        }
+        if (mode === 'hands' && !handsModel) {
+            handsModel = new Hands({locateFile: (file) => `https://cdn.jsdelivr.net/npm/@mediapipe/hands/${file}`});
+            handsModel.setOptions({maxNumHands: 1, modelComplexity: 1, minDetectionConfidence: 0.5, minTrackingConfidence: 0.5});
+            handsModel.onResults(onHandResults);
         }
         
         camera = new Camera(videoElement, {
             onFrame: async () => {
-                await faceMesh.send({image: videoElement});
+                if (currentMode === 'face') await faceMesh.send({image: videoElement});
+                if (currentMode === 'hands') await handsModel.send({image: videoElement});
             },
-            width: 320,
-            height: 240
+            width: 320, height: 240
         });
         
         await camera.start();
-        camStatus.innerText = "Camera Active! Blink to Jump.";
+        camStatus.innerText = mode === 'face' ? "Camera Active! Blink to Jump." : "Camera Active! Swipe Up to Jump, Side to Dash.";
         camStatus.style.color = "#10b981";
     } catch (err) {
         camStatus.innerText = "Camera Error: " + err.message;
         camStatus.style.color = "#ef4444";
-        blinkToggle.checked = false;
+        webcamMode.value = 'off';
     }
 }
 
 function stopWebcam() {
-    if (camera) { camera.stop(); }
+    if (camera) { camera.stop(); camera = null; }
+    currentMode = 'off';
     camStatus.style.display = 'none';
 }
 
-blinkToggle.addEventListener('change', (e) => {
-    if (e.target.checked) {
-        startWebcam();
-    } else {
+webcamMode.addEventListener('change', (e) => {
+    if (e.target.value === 'off') {
         stopWebcam();
+    } else {
+        startWebcam(e.target.value);
     }
 });
