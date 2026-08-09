@@ -844,7 +844,7 @@ function calculateEAR(eye) {
 }
 
 function onFaceResults(results) {
-    if (currentMode !== 'face') return;
+    if (currentMode !== 'face' && currentMode !== 'full') return;
     drawPip(results, false);
     
     if (results.multiFaceLandmarks && results.multiFaceLandmarks.length > 0) {
@@ -853,7 +853,6 @@ function onFaceResults(results) {
         const rightEye = [landmarks[362], landmarks[385], landmarks[387], landmarks[263], landmarks[373], landmarks[380]];
         const ear = (calculateEAR(leftEye) + calculateEAR(rightEye)) / 2;
         
-        // Map 1-10 slider to 0.15 - 0.28 threshold
         const sens = parseInt(camSensitivity.value);
         const threshold = 0.15 + (sens * 0.013);
         
@@ -863,12 +862,14 @@ function onFaceResults(results) {
                 let now = Date.now();
                 if (now - lastBlinkTime > 200) { 
                     lastBlinkTime = now;
-                    if (gameState === 'PLAYING') handleTap(0, 0, true);
+                    if (currentMode === 'face' && gameState === 'PLAYING') handleTap(0, 0, true);
                 }
             }
         } else {
             isBlinking = false;
         }
+        
+        checkUltimateDash();
     }
 }
 
@@ -877,73 +878,45 @@ let leftFistClosed = false;
 let rightFistClosed = false;
 let lastLeftFistTime = 0;
 let lastRightFistTime = 0;
-let leftHandHistory = []; 
 
 function getHandOpenness(landmarks) {
     const wrist = landmarks[0];
     const middleKnuckle = landmarks[9];
-    
-    // Normalize scale by measuring hand size (wrist to middle knuckle)
     const baseDist = Math.hypot(middleKnuckle.x - wrist.x, middleKnuckle.y - wrist.y);
     if (baseDist === 0) return 1;
     
-    // Calculate average distance of fingertips to wrist
     const tips = [8, 12, 16, 20];
     let totalDist = 0;
     for (let tip of tips) {
         totalDist += Math.hypot(landmarks[tip].x - wrist.x, landmarks[tip].y - wrist.y);
     }
-    
-    const avgTipDist = totalDist / tips.length;
-    return avgTipDist / baseDist; 
+    return (totalDist / tips.length) / baseDist; 
 }
 
 function onHandResults(results) {
-    if (currentMode !== 'hands') return;
+    if (currentMode !== 'full') return;
     drawPip(results, true);
+    
+    // Reset states if hands lost
+    let leftSeen = false;
+    let rightSeen = false;
     
     if (results.multiHandLandmarks && results.multiHandLandmarks.length > 0) {
         const now = Date.now();
         const sens = parseInt(camSensitivity.value);
         const fistThreshold = 1.0 + (sens * 0.08); 
-        const swipeThreshold = 0.15 - (sens * 0.01);
         
         for (let i = 0; i < results.multiHandLandmarks.length; i++) {
             const landmarks = results.multiHandLandmarks[i];
             const wrist = landmarks[0];
             const openness = getHandOpenness(landmarks);
             const isFist = openness < fistThreshold;
-            
-            // Since camera is mirrored, x > 0.5 is the physical Left hand of the user
             const isPhysicalLeftHand = wrist.x > 0.5;
             
             if (isPhysicalLeftHand) {
-                // Movement Logic (Jump / Dash)
-                let isDashingMove = false;
-                
-                leftHandHistory.push({x: wrist.x, y: wrist.y, time: now});
-                if (leftHandHistory.length > 5) leftHandHistory.shift();
-                
-                if (isFist && leftHandHistory.length === 5) {
-                    const first = leftHandHistory[0];
-                    const last = leftHandHistory[4];
-                    const dt = last.time - first.time;
-                    
-                    if (dt < 200) {
-                        const dx = last.x - first.x;
-                        // Swipe physical right means dx < 0 on mirrored cam
-                        if (dx < -swipeThreshold) { 
-                            if (gameState === 'PLAYING' && !isDashing && dashCooldown === 0) {
-                                dash();
-                                isDashingMove = true;
-                            }
-                            leftHandHistory = []; 
-                        }
-                    }
-                }
-                
+                leftSeen = true;
                 if (isFist) { 
-                    if (!leftFistClosed && !isDashingMove) {
+                    if (!leftFistClosed) {
                         leftFistClosed = true;
                         if (now - lastLeftFistTime > 200) { 
                             lastLeftFistTime = now;
@@ -953,9 +926,8 @@ function onHandResults(results) {
                 } else {
                     leftFistClosed = false;
                 }
-                
             } else {
-                // Combat Logic (Right Hand attacks boss)
+                rightSeen = true;
                 if (isFist) { 
                     if (!rightFistClosed) {
                         rightFistClosed = true;
@@ -963,10 +935,18 @@ function onHandResults(results) {
                             lastRightFistTime = now;
                             if (gameState === 'PLAYING' && boss.active) {
                                 boss.hp--;
-                                // Visual & Audio Feedback
                                 try { hitSound.currentTime = 0; hitSound.play(); } catch(e){}
                                 for(let p=0; p<15; p++) {
                                     particles.push(new Particle(boss.x, boss.y, boss.color));
+                                }
+                                // Boss Death Fix
+                                if (boss.hp <= 0) {
+                                    boss.active = false;
+                                    score += 500;
+                                    bossKillCount++;
+                                    for(let p=0; p<50; p++) {
+                                        particles.push(new Particle(boss.x, boss.y, boss.color));
+                                    }
                                 }
                             }
                         }
@@ -974,6 +954,20 @@ function onHandResults(results) {
                 } else {
                     rightFistClosed = false;
                 }
+            }
+        }
+    }
+    if (!leftSeen) leftFistClosed = false;
+    if (!rightSeen) rightFistClosed = false;
+    
+    checkUltimateDash();
+}
+
+function checkUltimateDash() {
+    if (currentMode === 'full') {
+        if (leftFistClosed && rightFistClosed && isBlinking) {
+            if (gameState === 'PLAYING' && !isDashing && dashCooldown === 0) {
+                dash();
             }
         }
     }
@@ -989,12 +983,12 @@ async function startWebcam(mode) {
     pipCanvas.style.display = 'block';
     
     try {
-        if (mode === 'face' && !faceMesh) {
+        if ((mode === 'face' || mode === 'full') && !faceMesh) {
             faceMesh = new FaceMesh({locateFile: (file) => `https://cdn.jsdelivr.net/npm/@mediapipe/face_mesh/${file}`});
             faceMesh.setOptions({maxNumFaces: 1, refineLandmarks: true, minDetectionConfidence: 0.5, minTrackingConfidence: 0.5});
             faceMesh.onResults(onFaceResults);
         }
-        if (mode === 'hands' && !handsModel) {
+        if (mode === 'full' && !handsModel) {
             handsModel = new Hands({locateFile: (file) => `https://cdn.jsdelivr.net/npm/@mediapipe/hands/${file}`});
             handsModel.setOptions({maxNumHands: 2, modelComplexity: 1, minDetectionConfidence: 0.5, minTrackingConfidence: 0.5});
             handsModel.onResults(onHandResults);
@@ -1002,14 +996,21 @@ async function startWebcam(mode) {
         
         camera = new Camera(videoElement, {
             onFrame: async () => {
-                if (currentMode === 'face') await faceMesh.send({image: videoElement});
-                if (currentMode === 'hands') await handsModel.send({image: videoElement});
+                if (currentMode === 'face') {
+                    await faceMesh.send({image: videoElement});
+                } else if (currentMode === 'full') {
+                    // Feed to both concurrently
+                    await Promise.all([
+                        faceMesh.send({image: videoElement}),
+                        handsModel.send({image: videoElement})
+                    ]);
+                }
             },
             width: 320, height: 240
         });
         
         await camera.start();
-        camStatus.innerText = mode === 'face' ? "Camera Active! Blink to Jump." : "Camera Active! Left Hand = Move, Right Hand = Combat.";
+        camStatus.innerText = mode === 'face' ? "Camera Active! Blink to Jump." : "Full Dive Active! Left = Jump, Right = Combat, Both + Blink = Dash!";
         camStatus.style.color = "#10b981";
     } catch (err) {
         camStatus.innerText = "Camera Error: " + err.message;
