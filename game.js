@@ -905,77 +905,78 @@ function getHandOpenness(landmarks) {
     return (totalDist / tips.length) / baseDist; 
 }
 
-function onHolisticResults(results) {
-    if (currentMode !== 'full') return;
+function onHandResults(results) {
+    if (currentMode !== 'hands') return;
     drawPip(results, true);
     
-    const now = Date.now();
-    const sens = parseInt(camSensitivity.value);
-    const fistThreshold = 1.0 + (sens * 0.08); 
-    const blinkThreshold = 0.15 + (sens * 0.013);
+    let leftSeen = false;
+    let rightSeen = false;
     
-    // Face Logic
-    if (results.faceLandmarks) {
-        const landmarks = results.faceLandmarks;
-        const leftEye = [landmarks[33], landmarks[160], landmarks[158], landmarks[133], landmarks[153], landmarks[144]];
-        const rightEye = [landmarks[362], landmarks[385], landmarks[387], landmarks[263], landmarks[373], landmarks[380]];
-        const ear = (calculateEAR(leftEye) + calculateEAR(rightEye)) / 2;
-        if (ear < blinkThreshold) {
-            if (!isBlinking) {
-                isBlinking = true;
-                if (now - lastBlinkTime > 200) lastBlinkTime = now;
-            }
-        } else {
-            isBlinking = false;
-        }
-    } else {
-        isBlinking = false;
-    }
-    
-    // Left Hand (Jump)
-    if (results.leftHandLandmarks) {
-        const openness = getHandOpenness(results.leftHandLandmarks);
-        if (openness < fistThreshold) {
-            if (!leftFistClosed) {
-                leftFistClosed = true;
-                if (now - lastLeftFistTime > 200) {
-                    lastLeftFistTime = now;
-                    if (gameState === 'PLAYING') handleTap(0, 0, true);
-                }
-            }
-        } else { leftFistClosed = false; }
-    } else { leftFistClosed = false; }
-    
-    // Right Hand (Combat)
-    if (results.rightHandLandmarks) {
-        const openness = getHandOpenness(results.rightHandLandmarks);
-        if (openness < fistThreshold) {
-            if (!rightFistClosed) {
-                rightFistClosed = true;
-                if (now - lastRightFistTime > 200) {
-                    lastRightFistTime = now;
-                    if (gameState === 'PLAYING' && boss.active) {
-                        boss.hp--;
-                        try { hitSound.currentTime = 0; hitSound.play(); } catch(e){}
-                        for(let p=0; p<15; p++) particles.push(new Particle(boss.x, boss.y, boss.color));
-                        if (boss.hp <= 0) {
-                            boss.active = false;
-                            score += 500;
-                            bossKillCount++;
-                            for(let p=0; p<50; p++) particles.push(new Particle(boss.x, boss.y, boss.color));
+    if (results.multiHandLandmarks && results.multiHandLandmarks.length > 0) {
+        const now = Date.now();
+        const sens = parseInt(camSensitivity.value);
+        const fistThreshold = 1.0 + (sens * 0.08); 
+        
+        for (let i = 0; i < results.multiHandLandmarks.length; i++) {
+            const landmarks = results.multiHandLandmarks[i];
+            const wrist = landmarks[0];
+            const openness = getHandOpenness(landmarks);
+            const isFist = openness < fistThreshold;
+            const isPhysicalLeftHand = wrist.x > 0.5;
+            
+            if (isPhysicalLeftHand) {
+                leftSeen = true;
+                if (isFist) { 
+                    if (!leftFistClosed) {
+                        leftFistClosed = true;
+                        if (now - lastLeftFistTime > 200) { 
+                            lastLeftFistTime = now;
+                            if (gameState === 'PLAYING') handleTap(0, 0, true);
                         }
                     }
+                } else {
+                    leftFistClosed = false;
+                }
+            } else {
+                rightSeen = true;
+                if (isFist) { 
+                    if (!rightFistClosed) {
+                        rightFistClosed = true;
+                        if (now - lastRightFistTime > 200) { 
+                            lastRightFistTime = now;
+                            if (gameState === 'PLAYING' && boss.active) {
+                                boss.hp--;
+                                try { hitSound.currentTime = 0; hitSound.play(); } catch(e){}
+                                for(let p=0; p<15; p++) {
+                                    particles.push(new Particle(boss.x, boss.y, boss.color));
+                                }
+                                if (boss.hp <= 0) {
+                                    boss.active = false;
+                                    score += 500;
+                                    bossKillCount++;
+                                    for(let p=0; p<50; p++) {
+                                        particles.push(new Particle(boss.x, boss.y, boss.color));
+                                    }
+                                }
+                            }
+                        }
+                    }
+                } else {
+                    rightFistClosed = false;
                 }
             }
-        } else { rightFistClosed = false; }
-    } else { rightFistClosed = false; }
+        }
+    }
+    if (!leftSeen) leftFistClosed = false;
+    if (!rightSeen) rightFistClosed = false;
     
     checkUltimateDash();
 }
 
 function checkUltimateDash() {
-    if (currentMode === 'full') {
-        if (leftFistClosed && rightFistClosed && isBlinking) {
+    if (currentMode === 'hands') {
+        // No blink required anymore, just both fists!
+        if (leftFistClosed && rightFistClosed) {
             if (gameState === 'PLAYING' && !isDashing && dashCooldown === 0) {
                 dash();
             }
@@ -998,22 +999,22 @@ async function startWebcam(mode) {
             faceMesh.setOptions({maxNumFaces: 1, refineLandmarks: true, minDetectionConfidence: 0.5, minTrackingConfidence: 0.5});
             faceMesh.onResults(onFaceResults);
         }
-        if (mode === 'full' && !holisticModel) {
-            holisticModel = new Holistic({locateFile: (file) => `https://cdn.jsdelivr.net/npm/@mediapipe/holistic/${file}`});
-            holisticModel.setOptions({modelComplexity: 1, smoothLandmarks: true, enableSegmentation: false, smoothSegmentation: false, refineFaceLandmarks: true, minDetectionConfidence: 0.5, minTrackingConfidence: 0.5});
-            holisticModel.onResults(onHolisticResults);
+        if (mode === 'hands' && !handsModel) {
+            handsModel = new Hands({locateFile: (file) => `https://cdn.jsdelivr.net/npm/@mediapipe/hands/${file}`});
+            handsModel.setOptions({maxNumHands: 2, modelComplexity: 1, minDetectionConfidence: 0.5, minTrackingConfidence: 0.5});
+            handsModel.onResults(onHandResults);
         }
         
         camera = new Camera(videoElement, {
             onFrame: async () => {
                 if (currentMode === 'face') await faceMesh.send({image: videoElement});
-                if (currentMode === 'full') await holisticModel.send({image: videoElement});
+                if (currentMode === 'hands') await handsModel.send({image: videoElement});
             },
             width: 320, height: 240
         });
         
         await camera.start();
-        camStatus.innerText = mode === 'face' ? "Camera Active! Blink to Jump." : "Full Dive Active! Left = Jump, Right = Combat, Both + Blink = Dash!";
+        camStatus.innerText = mode === 'face' ? "Camera Active! Blink to Jump." : "Camera Active! Left = Jump, Right = Combat, Both = Dash!";
         camStatus.style.color = "#10b981";
     } catch (err) {
         camStatus.innerText = "Camera Error: " + err.message;
