@@ -873,16 +873,60 @@ function onFaceResults(results) {
 }
 
 // Hand Tracking Logic
-let handHistory = [];
+let isFistClosed = false;
+let lastFistTime = 0;
+let handHistory = []; 
+
+function getHandOpenness(landmarks) {
+    const wrist = landmarks[0];
+    const middleKnuckle = landmarks[9];
+    
+    // Normalize scale by measuring hand size (wrist to middle knuckle)
+    const baseDist = Math.hypot(middleKnuckle.x - wrist.x, middleKnuckle.y - wrist.y);
+    if (baseDist === 0) return 1;
+    
+    // Calculate average distance of fingertips to wrist
+    const tips = [8, 12, 16, 20];
+    let totalDist = 0;
+    for (let tip of tips) {
+        totalDist += Math.hypot(landmarks[tip].x - wrist.x, landmarks[tip].y - wrist.y);
+    }
+    
+    const avgTipDist = totalDist / tips.length;
+    return avgTipDist / baseDist; 
+}
 
 function onHandResults(results) {
     if (currentMode !== 'hands') return;
     drawPip(results, true);
     
     if (results.multiHandLandmarks && results.multiHandLandmarks.length > 0) {
-        const wrist = results.multiHandLandmarks[0][0]; // Wrist landmark
+        const landmarks = results.multiHandLandmarks[0];
         const now = Date.now();
         
+        // --- Fist Clench to Jump ---
+        const openness = getHandOpenness(landmarks);
+        
+        // Map 1-10 slider to 1.1 - 1.8 threshold
+        // High sens (10) -> jumps easily, threshold higher (e.g. 1.8)
+        // Low sens (1) -> requires tight fist, threshold lower (e.g. 1.1)
+        const sens = parseInt(camSensitivity.value);
+        const fistThreshold = 1.0 + (sens * 0.08); 
+        
+        if (openness < fistThreshold) { 
+            if (!isFistClosed) {
+                isFistClosed = true;
+                if (now - lastFistTime > 200) { 
+                    lastFistTime = now;
+                    if (gameState === 'PLAYING') handleTap(0, 0, true);
+                }
+            }
+        } else {
+            isFistClosed = false;
+        }
+        
+        // --- Swipe Horizontal to Dash ---
+        const wrist = landmarks[0];
         handHistory.push({x: wrist.x, y: wrist.y, time: now});
         if (handHistory.length > 5) handHistory.shift();
         
@@ -893,19 +937,11 @@ function onHandResults(results) {
             
             if (dt < 200) {
                 const dx = last.x - first.x;
-                const dy = last.y - first.y;
+                const swipeThreshold = 0.15 - (sens * 0.01);
                 
-                // Map 1-10 slider to 0.15 - 0.02 threshold
-                const sens = parseInt(camSensitivity.value);
-                const threshold = 0.15 - (sens * 0.013);
-                
-                if (dy < -threshold) { // Swipe UP
-                    if (gameState === 'PLAYING') handleTap(0, 0, true);
-                    handHistory = []; return; 
-                }
-                if (Math.abs(dx) > threshold + 0.02) { // Swipe Horizontal
+                if (Math.abs(dx) > swipeThreshold) { // Horizontal Swipe
                     if (gameState === 'PLAYING' && !isDashing && dashCooldown === 0) dash();
-                    handHistory = []; return; 
+                    handHistory = []; 
                 }
             }
         }
@@ -942,7 +978,7 @@ async function startWebcam(mode) {
         });
         
         await camera.start();
-        camStatus.innerText = mode === 'face' ? "Camera Active! Blink to Jump." : "Camera Active! Swipe Up to Jump, Side to Dash.";
+        camStatus.innerText = mode === 'face' ? "Camera Active! Blink to Jump." : "Camera Active! Clench to Jump, Swipe to Dash.";
         camStatus.style.color = "#10b981";
     } catch (err) {
         camStatus.innerText = "Camera Error: " + err.message;
