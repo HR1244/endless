@@ -952,6 +952,7 @@ function onHandResults(results) {
                                 }
                                 if (boss.hp <= 0) {
                                     boss.active = false;
+                                    bossSpawnTarget += 10000;
                                     score += 500;
                                     bossKillCount++;
                                     for(let p=0; p<50; p++) {
