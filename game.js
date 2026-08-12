@@ -367,7 +367,7 @@ let touchStartX = 0;
 let touchStartY = 0;
 
 window.addEventListener('touchstart', (e) => {
-    if (e.target.tagName !== 'BUTTON') { 
+    if (e.target.tagName !== 'BUTTON' && e.target.tagName !== 'SELECT' && e.target.tagName !== 'INPUT') { 
         e.preventDefault(); 
         touchStartX = e.changedTouches[0].clientX;
         touchStartY = e.changedTouches[0].clientY;
@@ -378,7 +378,7 @@ window.addEventListener('touchstart', (e) => {
 }, { passive: false });
 
 window.addEventListener('touchend', (e) => {
-    if (e.target.tagName !== 'BUTTON') { 
+    if (e.target.tagName !== 'BUTTON' && e.target.tagName !== 'SELECT' && e.target.tagName !== 'INPUT') { 
         let touchEndX = e.changedTouches[0].clientX;
         let touchEndY = e.changedTouches[0].clientY;
         let dx = touchEndX - touchStartX;
@@ -392,7 +392,7 @@ window.addEventListener('touchend', (e) => {
 });
 
 window.addEventListener('mousedown', (e) => {
-    if (e.target.tagName !== 'BUTTON') {
+    if (e.target.tagName !== 'BUTTON' && e.target.tagName !== 'SELECT' && e.target.tagName !== 'INPUT') {
         handleTap(e.clientX, e.clientY, true);
     }
 });
