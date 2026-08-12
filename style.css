@@ -8,7 +8,12 @@
     --glass-border: rgba(255, 255, 255, 0.15);
 }
 
-* { margin: 0; padding: 0; box-sizing: border-box; user-select: none; -webkit-tap-highlight-color: transparent; }
+* { margin: 0; padding: 0; box-sizing: border-box; user-select: none; -webkit-user-select: none; -webkit-tap-highlight-color: transparent; }
+
+/* Allow interaction on form elements (Fixes mobile dropdown bug) */
+input, select, button {
+    user-select: auto; -webkit-user-select: auto;
+}
 
 body, html {
     width: 100%; height: 100%; overflow: hidden;
